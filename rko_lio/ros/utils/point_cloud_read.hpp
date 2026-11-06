@@ -23,15 +23,47 @@
  */
 
 #pragma once
+#include <rko_lio/core/util.hpp>
+
 #include <Eigen/Core>
+#include <functional>
+#include <memory>
+#include <optional>
 #include <sophus/se3.hpp>
+#include <string>
+#include <string_view>
 // ros
+#include <point_cloud_transport/point_cloud_codec.hpp>
+#include <point_cloud_transport/subscriber_plugin.hpp>
+#include <rclcpp/node.hpp>
+#include <rclcpp/serialized_message.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
 namespace rko_lio::ros::utils {
-std::vector<Eigen::Vector3d> point_cloud2_to_eigen(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg);
+core::Vector3sVector point_cloud2_to_eigen(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg);
 
-std::tuple<std::vector<Eigen::Vector3d>, std::vector<double>>
-point_cloud2_to_eigen_with_timestamps(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg);
+struct RawScan {
+  core::Vector3sVector points;
+  std::vector<double> timestamps;
+};
+
+RawScan point_cloud2_to_eigen_with_timestamps(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg);
+
+struct LidarDeserializer {
+  explicit LidarDeserializer(std::string_view type);
+  // nullptr if the compressed cloud does not decode
+  sensor_msgs::msg::PointCloud2::ConstSharedPtr operator()(const std::shared_ptr<rclcpp::SerializedMessage>& msg) const;
+  mutable std::optional<point_cloud_transport::PointCloudCodec> codec;
+  mutable std::shared_ptr<point_cloud_transport::SubscriberPlugin> decoder;
+};
+
+// Waits until `topic` has a publisher, then subscribes as PointCloud2, or as CompressedPointCloud2 if that publisher
+// advertises it.
+// nullptr if ROS shuts down while waiting.
+rclcpp::SubscriptionBase::SharedPtr
+create_lidar_subscription(const rclcpp::Node::SharedPtr& node,
+                          const std::string& topic,
+                          const rclcpp::QoS& qos,
+                          const std::function<void(const sensor_msgs::msg::PointCloud2::ConstSharedPtr&)>& callback);
 }; // namespace rko_lio::ros::utils

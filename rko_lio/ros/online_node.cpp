@@ -22,20 +22,23 @@
  * SOFTWARE.
  */
 
-#include "threaded_node.hpp"
 #include "rko_lio/core/profiler.hpp"
+#include "rko_lio/ros/utils/point_cloud_read.hpp"
+#include "threaded_node.hpp"
 
 namespace rko_lio::ros {
+namespace {
 class OnlineNode : public ThreadedNode {
 public:
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub;
-  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr lidar_sub;
+  rclcpp::SubscriptionBase::SharedPtr lidar_sub;
   rko_lio::core::Timer timer;
 
   OnlineNode(const OnlineNode&) = delete;
   OnlineNode(OnlineNode&&) = delete;
   OnlineNode& operator=(const OnlineNode&) = delete;
   OnlineNode& operator=(OnlineNode&&) = delete;
+  ~OnlineNode() = default;
 
   explicit OnlineNode(const rclcpp::NodeOptions& options)
       : ThreadedNode("rko_lio_online_node", options), timer("RKO LIO Online Node") {
@@ -45,8 +48,8 @@ public:
     imu_sub = node->create_subscription<sensor_msgs::msg::Imu>(
         imu_topic, qos_imu, [this](const sensor_msgs::msg::Imu::ConstSharedPtr& imu_msg) { imu_callback(imu_msg); });
 
-    lidar_sub = node->create_subscription<sensor_msgs::msg::PointCloud2>(
-        lidar_topic, qos_lidar,
+    lidar_sub = utils::create_lidar_subscription(
+        node, lidar_topic, qos_lidar,
         [this](const sensor_msgs::msg::PointCloud2::ConstSharedPtr& lidar_msg) { lidar_callback(lidar_msg); });
   }
 
@@ -54,6 +57,7 @@ public:
     return node->get_node_base_interface();
   }
 };
+} // namespace
 } // namespace rko_lio::ros
 
 #include <rclcpp_components/register_node_macro.hpp>

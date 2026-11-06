@@ -2,6 +2,153 @@
 Changelog for package rko_lio
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.4.2 (2026-09-29)
+------------------
+* ros: add support for compressed clouds (`#187 <https://github.com/PRBonn/rko_lio/issues/187>`_)
+* Contributors: Meher Malladi
+
+0.4.1 (2026-09-25)
+------------------
+* core, api break: publish deskewed scan in base frame, change topic name (`#185 <https://github.com/PRBonn/rko_lio/issues/185>`_)
+  topic renamed from rko_lio/frame to rko_lio/deskewed_scan, previously in the lidar frame
+* ros, utils: log transform lookup failures only behind a flag
+* ros, launch: clean up autodetect again
+* ros: add use_sim_time param to launch
+* core, fix: voxel map quantisation cleanup
+  the full int8 range is used now. and an issue with round tripping point
+  to quanta to point landing in a different voxel (the upper face) is
+  fixed by changing the min and max bounds. approximation error goes up
+  near the upper face of a voxel, mm level at typical voxel sizes
+* core: make voxel center public api
+* ros, fix: stamp the local map publish with the latest scan time and not
+  now()
+* ros, fix: the listener was changed in lyrical, breaks before that
+  ugly macro but what can one do. i do want the cleanup in behavior
+* ros, fix: clean up how the tf listener is made, fixes creation on rolling
+* ros, launch: make autodetect suitable for use in other libs
+* ros, fix: tbb was missed in the export list after the public link
+  change
+* ros, fix: node shutdown callback cleanup
+* ros, utils: add a point cloud write version that includes intensities
+* core: move deskew to its own TU. enables reuse in other projects
+  should essentially be a no-op for all use cases. just adds a new
+  function to the public api
+* ros, utils: add a to_se3 free func, cleans up extrinsic handling
+* ros, utils: make ingesting dynamic tf optional (default true)
+* ros: cleaning up offline bag reader
+  seek on bag becomes seek from start in relative instead of absolute
+  time, to make it more convenient.
+  tf is directly read into the tf buffers instead of a doing a round trip
+  via the rmw.
+
+0.4.0 (2026-09-01)
+------------------
+* core, ros: reset odometry on fatal registration error (`#183 <https://github.com/PRBonn/rko_lio/issues/183>`_)
+  adds a reset count publisher for downstream subscribers
+* core: widen the size check on register scan entry to catch more possible
+  errors
+* core: drop imu messages with negative dt
+* ros: reorder declaration of jthreads to avoid a possible race
+* core: use typed exceptions and clean up error handling (`#182 <https://github.com/PRBonn/rko_lio/issues/182>`_)
+  frame drops and fatal errors can now be distinguished
+* core: switch to an spdlog sink instead of cout/cerr for core logs (`#180 <https://github.com/PRBonn/rko_lio/issues/180>`_)
+  on ros, spdlog is redirected to an rclcpp sink so ros log levels are respected
+* core, ci: bump clang tidy to latest, clean up linter warnings (`#179 <https://github.com/PRBonn/rko_lio/issues/179>`_)
+* core, ros: remove nlohmann_json as a dep, dump config as yaml instead (`#177 <https://github.com/PRBonn/rko_lio/issues/177>`_)
+* ros: drop the oldest frame on the online node instead of the latest scan (`#155 <https://github.com/PRBonn/rko_lio/issues/155>`_)
+* core: extrapolate the motion prior across a lidar gap instead of throwing (`#174 <https://github.com/PRBonn/rko_lio/issues/174>`_)
+  a gap longer than the allowed scan delta used to permanently stop odometry instead of just the one scan spanning it
+* core: timestamp struct handling cleanup, min/max computed once (`#175 <https://github.com/PRBonn/rko_lio/issues/175>`_)
+* core, ros: consistent naming, and make the voxel map's state private (`#171 <https://github.com/PRBonn/rko_lio/issues/171>`_)
+  breaking core api renames: VoxelHashMap::pointcloud() -> points(), ros::LidarFrame -> LidarScan
+* core: deskew without a per-point SE3 exp (`#172 <https://github.com/PRBonn/rko_lio/issues/172>`_)
+* ros: fix a deadlock on the offline node bag read
+* ros, config: limit max iterations to 50 by default
+  was 500
+* ros: change default num threads to 1, and reduce the lidar buffer size
+* core: quantise the voxel map to int8 offsets with fixed-size inline blocks (`#170 <https://github.com/PRBonn/rko_lio/issues/170>`_)
+  cuts local map memory footprint
+* core: use pmr for voxel down sample to reduce allocations
+* core: switch icp to right perturbation (`#163 <https://github.com/PRBonn/rko_lio/issues/163>`_)
+  theoretically better conditioning at very large scales
+* chore: enforce formatters and linters through pre-commit, various lint fixes (`#162 <https://github.com/PRBonn/rko_lio/issues/162>`_)
+  clang-format, ruff, cmake-format, clang-tidy and codespell across the repo. also scopes
+  BUILD_SHARED_LIBS to the python wheel build: it was set globally from TBB's dependency
+  file, so a ROS user building with FetchContent hit oneTBB's static-build warning meant
+  only for the wheel
+* core: redo tbb threading control using task arena instead of global
+  allows multiple components in a process to use tbb independently. also fixes a build
+  breakage where tbb needed to be a public link, not private
+* core: better icp convergence criterion, function tolerance over param delta (`#161 <https://github.com/PRBonn/rko_lio/issues/161>`_)
+* floating point type is now configurable to float or double (`#160 <https://github.com/PRBonn/rko_lio/issues/160>`_)
+  across core, py, ros; a build-time switch, no runtime cost
+* core, perf: reducing scan copies (`#159 <https://github.com/PRBonn/rko_lio/issues/159>`_)
+* core, cleanup: linear system build cleanup, and voxel map op unification (`#158 <https://github.com/PRBonn/rko_lio/issues/158>`_)
+* core, perf: improve closest neighbour search by early pruning voxels (`#157 <https://github.com/PRBonn/rko_lio/issues/157>`_)
+* Contributors: Dhagash Desai, Meher Malladi
+
+0.3.2 (2026-07-28)
+------------------
+* ros, launch: autodetect topics and frames (`#152 <https://github.com/PRBonn/rko_lio/issues/152>`_)
+  the imu and lidar topics, the sensor frames and the base frame are filled in from the running graph, or from the bag in offline mode
+
+0.3.1 (2026-07-16)
+------------------
+* ros: fix rolling compat break, plus a bunch of deprecation warnings (`#149 <https://github.com/PRBonn/rko_lio/issues/149>`_)
+  add a ros nightly image based weekly ci job so i have my own signal of api changes upstream
+* py: improve raw dataloader and remove open3d as a dep (`#148 <https://github.com/PRBonn/rko_lio/issues/148>`_)
+
+0.3.0 (2026-06-16)
+------------------
+* misc: adds testing for lyrical, fixes the current ci fails (`#142 <https://github.com/PRBonn/rko_lio/issues/142>`_)
+  * adds testing for lyrical, fixes the current ci fails, and switches to leaner images for ci
+* use VoxelHash struct to avoid ODR violations (`#140 <https://github.com/PRBonn/rko_lio/issues/140>`_)
+  Co-authored-by: Meher Malladi <rm.meher97@gmail.com>
+* core: revert voxel down sample sorted (`#141 <https://github.com/PRBonn/rko_lio/issues/141>`_)
+  not a 1-1 improvement over previous behavior
+* core: Fix tbb threading using max_num_threads (`#137 <https://github.com/PRBonn/rko_lio/issues/137>`_)
+  * core: return the thread limit which was lost in `#93 <https://github.com/PRBonn/rko_lio/issues/93>`_
+* core: improved voxel down sampling, use robin set, explicit hash sorting (`#136 <https://github.com/PRBonn/rko_lio/issues/136>`_)
+  * tests: add test cases for voxel_down_sample_sorted
+* core, python, ros: a series of simplifications (`#133 <https://github.com/PRBonn/rko_lio/issues/133>`_)
+  * core: clean up preprocessing result for double deskewing on/off
+  * ros: frame parsing simplifications
+  * ros: imu rate publishing simplify
+  * ros: unify publishers to use lio->state
+  * core: simplify point to voxel usage
+  * api: fix my embarrassing spelling mistake on correspondences
+  * ros: clean up bag progress publish in offline mode
+* core: Reject empty input vectors instead of dereferencing end() (`#135 <https://github.com/PRBonn/rko_lio/issues/135>`_)
+* ros (bug): fix shared library components not installing properly
+* core: time in nanoseconds, everywhere (`#132 <https://github.com/PRBonn/rko_lio/issues/132>`_)
+  * switch doubles to nanoseconds end-to-end
+  * ros: improve the utils slightly
+* ros (+ core): Installable and therefore reusable libs (`#131 <https://github.com/PRBonn/rko_lio/issues/131>`_)
+  * make core/ros/ros::utils libs ament-installable + exportable
+  * install only on no fetch content. and prevent install on humble
+* core: drop Bonxai for tsl::robin_map (`#130 <https://github.com/PRBonn/rko_lio/issues/130>`_)
+  * switch to tsl robin map instead of bonxai
+  * change method names to snake case for the hash map
+* chore: bump FetchContent dependencies (`#128 <https://github.com/PRBonn/rko_lio/issues/128>`_)
+* ros: offline node exits once lidar buffer has been emptied (`#127 <https://github.com/PRBonn/rko_lio/issues/127>`_)
+  * fix a potential bug that i thought i fixed on imu msgs being leftover
+  * catch the potential race with the node dying before reg exits
+* docs: overhaul (`#126 <https://github.com/PRBonn/rko_lio/issues/126>`_)
+* ros, feat: odometry at imu rate (`#125 <https://github.com/PRBonn/rko_lio/issues/125>`_)
+  * feat: publish odometry at imu freq, when running sequentially
+  * add a part for the imu rate odom to the docs
+* core: simplifications and clean up to core (`#124 <https://github.com/PRBonn/rko_lio/issues/124>`_)
+* Add Catch2 tests for core functionalities and related updates (`#123 <https://github.com/PRBonn/rko_lio/issues/123>`_)
+  * add catch2 based tests to cover important core functionalities.
+  * then related file updates
+  * consolidate workflows
+* core: error out if keypoints is too small as thats likely a data error (`#110 <https://github.com/PRBonn/rko_lio/issues/110>`_)
+* ros: add deskewed scan topic as a config, change default topic names to relative (`#108 <https://github.com/PRBonn/rko_lio/issues/108>`_)
+* core: orientation linear system simplifications. move util classes to util (`#94 <https://github.com/PRBonn/rko_lio/issues/94>`_)
+* Some code refactoring and execution time improvement. (`#93 <https://github.com/PRBonn/rko_lio/issues/93>`_)
+  Co-authored-by: Meher Malladi <rm.meher97@gmail.com>
+* Contributors: Aleksandr Kovalko, Luca Lobefaro, Meher Malladi, Saurabh Gupta, dependabot[bot], muvahhid kılıç
+
 0.2.0 (2025-12-02)
 ------------------
 * Fix (core): log proper pose for the first frame if init. phase is on (`#89 <https://github.com/PRBonn/rko_lio/issues/89>`_)

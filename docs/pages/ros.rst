@@ -10,7 +10,7 @@ ROS
   </p>
   </div>
 
-Supported distros: Humble, Jazzy, Kilted, Rolling.
+Supported distros: Humble, Jazzy, Kilted, Lyrical, Rolling.
 
 .. contents::
    :local:
@@ -32,7 +32,7 @@ Build from source
 The system dependencies are:
 
 - CMake, a ROS environment.
-- Optionally: Eigen, Sophus, nlohmann_json, TBB. tsl::robin_map is always fetched (no rosdep rule yet).
+- Optionally: Eigen, Sophus, TBB, robin-map, spdlog.
 
 Clone the repository into a colcon workspace's ``src``.
 
@@ -103,11 +103,18 @@ Usage
 -----
 
 Everything is launched through ``odometry.launch.py``.
-At minimum, set ``lidar_topic``, ``imu_topic`` and ``base_frame``:
+The topics and frames it needs are autodetected, so this may be all you need:
 
 .. code-block:: bash
 
-   ros2 launch rko_lio odometry.launch.py \
+   ros2 launch rko_lio odometry.launch.py
+
+See :ref:`autodetection`.
+Or set everything yourself:
+
+.. code-block:: bash
+
+   ros2 launch rko_lio odometry.launch.py autodetect:=false \
        lidar_topic:=/your/lidar imu_topic:=/your/imu base_frame:=base
 
 To see all parameters with their descriptions:
@@ -136,6 +143,32 @@ A typical invocation:
    ros2 launch rko_lio odometry.launch.py \
        config_file:=/path/to/config/file \
        rviz:=true
+
+.. _autodetection:
+
+Launch parameter autodetection
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. warning::
+  This is experimental. Pass ``autodetect:=false`` and set the parameters yourself if it gets in your way.
+
+``imu_topic``, ``lidar_topic``, ``imu_frame``, ``lidar_frame`` and ``base_frame`` are filled in when you leave them unset.
+Online, from the running graph. With ``mode:=offline``, from the bag at ``bag_path``.
+
+- The topics, if exactly one ``sensor_msgs/msg/Imu`` and one ``sensor_msgs/msg/PointCloud2`` topic exists. Otherwise you get the candidates listed and nothing is launched.
+  With no ``PointCloud2`` topic (online, none within ``autodetect_timeout``), a single ``point_cloud_interfaces/msg/CompressedPointCloud2`` topic is used instead.
+- The sensor frames, from the message ``frame_id``.
+- ``base_frame``, as whichever of ``base_link``, ``base_footprint`` or ``base`` is in the TF tree. If none is, the lidar frame is used instead and ``invert_odom_tf`` is turned on so the odometry TF still attaches to your tree.
+- A check that TF actually connects the sensor frames to the base frame. Otherwise you get the known frames listed, instead of finding out once the odometry is already running.
+
+Whatever you do specify, on the CLI or in a config file, is used as is.
+So pin the topics and let it work out the frames, if you like.
+Set all five and nothing is inspected at all.
+
+Online, it waits up to ``autodetect_timeout`` seconds (default 10) for the data it needs.
+Raise it if your system is slow to start.
+
+With ``autodetect:=false``, ``imu_topic``, ``lidar_topic`` and ``base_frame`` are required, and you are told which of them you left out.
 
 Frames and extrinsics
 ^^^^^^^^^^^^^^^^^^^^^
@@ -169,9 +202,9 @@ Published topics
   The twist is in ``base_frame`` coordinates and estimated from scan registration.
   A TF ``base_frame`` -> ``odom_frame`` is also broadcast alongside this topic; see ``invert_odom_tf`` if your TF tree needs the opposite parent/child relationship.
 
-- ``rko_lio/frame`` -- ``sensor_msgs/PointCloud2``, only published if ``publish_deskewed_scan:=true``.
+- ``rko_lio/deskewed_scan`` -- ``sensor_msgs/PointCloud2``, only published if ``publish_deskewed_scan:=true``.
 
-  The input scan after deskewing.
+  The input scan after deskewing, in ``base_frame`` coordinates, which is the frame registration runs in.
   Renamable via ``deskewed_scan_topic``.
 
 - ``rko_lio/local_map`` -- ``sensor_msgs/PointCloud2``, only published if ``publish_local_map:=true``.
@@ -239,7 +272,7 @@ A typical invocation:
 If your LiDAR per-point timestamps confuse the heuristic
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-If startup throws ``Runtime Error: TimestampProcessingConfig does not cover this particular case of data``, see :ref:`Configuring -> LiDAR per-point timestamps <config-lidar-timestamps>` for the override knobs.
+If startup throws ``Cannot classify LiDAR timestamps as absolute or relative``, see :ref:`Configuring -> LiDAR per-point timestamps <config-lidar-timestamps>` for the override knobs.
 The ROS parameters are ``lidar_timestamps.multiplier_to_seconds`` / ``lidar_timestamps.force_absolute`` / ``lidar_timestamps.force_relative``.
 
 References

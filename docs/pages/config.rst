@@ -2,7 +2,7 @@ Configuring the odometry
 ========================
 
 This page is a reference for runtime parameters.
-The first group -- the LIO core parameters -- is shared between the Python and ROS interfaces.
+The first group -- the LIO core parameters -- is shared between the Python and ROS interfaces, though a few defaults differ.
 The remaining groups (extrinsics, per-point timestamp handling, Python pipeline knobs, ROS launch knobs) cover the wrapper-specific bits.
 
 The defaults are sane and I've used them with success across a number of platforms and datasets.
@@ -60,10 +60,6 @@ These show up under the top level of a Python config and as ROS launch arguments
   Points closer than this are discarded.
   Useful if your platform shows up in the scan due to occlusions.
 
-- **max_points_per_voxel** (`int`, default ``20``)
-
-  Maximum number of points stored per voxel in the VDB map.
-
   Affects both memory and ICP data association.
 
   In case you need more runtime performance, you can reduce this.
@@ -73,7 +69,7 @@ These show up under the top level of a Python config and as ROS launch arguments
 
   Maximum distance threshold (meters) for ICP data associations.
 
-- **max_iterations** (`int`, default ``100``)
+- **max_iterations** (`int`, default ``50`` in ROS, ``100`` in Python)
 
   Limit on the number of iterations for ICP.
 
@@ -82,15 +78,16 @@ These show up under the top level of a Python config and as ROS launch arguments
 
 - **convergence_criterion** (`float`, default ``1e-5``)
 
-  Termination criterion for optimization.
+  Termination criterion for optimization. ICP stops once the cost changes by less than this
+  fraction of itself between two iterations.
   Lower (stricter) values will requires more ICP iterations.
 
-- **max_num_threads** (`int`, default ``0``)
+- **max_num_threads** (`int`, default ``1`` in ROS, ``0`` in Python)
 
   Only used to parallelize data association for ICP.
   ``0`` means autodetect based on hardware.
 
-  In case compute resources are a constraint, limit this to a few threads and, in order, ``max_points_per_voxel``, ``voxel_size``, ``max_range``, ``max_iterations`` are the parameters you probably care about.
+  In case compute resources are a constraint, limit this to a few threads and, in order, ``voxel_size``, ``max_range``, ``max_iterations`` are the parameters you probably care about.
 
 - **initialization_phase** (`bool`, default ``False``)
 
@@ -143,7 +140,7 @@ When are these required?
 
 - **ROS**: only if the TF tree isn't well defined or topic ``frame_id``\s don't match the TF tree. With a clean TF tree, the extrinsics are looked up automatically.
 - **Python rosbag dataloader**: only if the bag has no static TF tree. With a tree, the extrinsics are pulled from it.
-- **Python raw / HeLiPR dataloaders**: always required, supplied via the dataloader's own configuration mechanism (``transforms.yaml`` for raw, etc.).
+- **Python raw dataloader**: always required, supplied via the dataloader's own configuration mechanism (``transforms.yaml``).
 
 If you specify the extrinsics in a config but the dataloader / TF tree could also provide them, the config values take priority.
 
@@ -175,7 +172,7 @@ Without it, ``log_dir``, ``run_name``, and ``dump_deskewed_scans`` have no effec
 
 - **dump_deskewed_scans** (`bool`, default ``False``)
 
-  Save each deskewed scan to disk under ``log_dir`` as PLY. Useful for debugging the deskewing step or for reuse downstream. Off by default since it generates a lot of data.
+  Save each deskewed scan to disk under ``log_dir`` as PLY, in the base frame. Useful for debugging the deskewing step or for reuse downstream. Off by default since it generates a lot of data.
 
 - **log_dir** (`Path`, default ``"results"``)
 
@@ -206,20 +203,28 @@ Mode selection
 
   Path to the bag directory.
 
-- **skip_to_time** (`float`, offline only, default ``0.0``)
+- **skip_first_seconds** (`float`, offline only, default ``0.0``)
 
-  Skip ahead in the bag to this absolute time (seconds) before starting registration.
+  Skip this many seconds from the start of the bag before starting registration.
 
 Topic and frame configuration
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-- **imu_topic**, **lidar_topic**, **base_frame** (required, via CLI or config)
+- **imu_topic**, **lidar_topic**, **base_frame** (via CLI or config, required with ``autodetect:=false``)
 
   The IMU topic, the LiDAR topic, and the base frame of the robot.
+  Autodetected when left unset. See :ref:`autodetection`.
+  A ``point_cloud_interfaces/msg/CompressedPointCloud2`` LiDAR topic is decoded by the ``point_cloud_transport`` plugin named in its ``format`` field.
 
 - **imu_frame**, **lidar_frame** (optional)
 
   Override these only if the message ``frame_id`` doesn't match the TF tree.
+  Also autodetected, from the message ``frame_id``.
+
+- **autodetect** (`bool`, default ``true``, CLI only), **autodetect_timeout** (`float`, default ``10.0``, CLI only)
+
+  Fill in the topics and frames above that you left unset, and how long to wait for the data needed to do so (online only).
+  See :ref:`autodetection`.
 
 - **odom_frame** (default ``odom``), **odom_topic** (default ``rko_lio/odom``)
 
@@ -236,9 +241,9 @@ Publishing toggles
 
   Whether to publish the local map, the topic name, and the republish cadence in seconds.
 
-- **publish_deskewed_scan** (`bool`, default ``false``), **deskewed_scan_topic** (default ``rko_lio/frame``)
+- **publish_deskewed_scan** (`bool`, default ``false``), **deskewed_scan_topic** (default ``rko_lio/deskewed_scan``)
 
-  Whether to publish the deskewed scan, and the topic name.
+  Whether to publish the deskewed scan, and the topic name. The scan is published in ``base_frame``.
 
 - **publish_lidar_acceleration** (`bool`, default ``false``)
 
@@ -249,9 +254,9 @@ Mode-specific knobs
 
 These take effect only in the corresponding mode and otherwise warn that they are being ignored.
 
-- **async.max_lidar_buffer_size** (`int`, default ``50``)
+- **async.max_lidar_buffer_size** (`int`, default ``10``)
 
-  Threaded path only. Caps the lidar buffer; older frames are dropped past this.
+  Threaded path only. Caps the lidar buffer; the oldest buffered frame is dropped once it is full.
 
 - **seq.odom_at_imu_rate_topic** (default ``rko_lio/odom_at_imu_rate``)
 
@@ -268,13 +273,18 @@ Disk dumping and visualization
 
   On shutdown, dump the resolved configuration and the full trajectory under ``<results_dir>/<run_name>``. The folder name is auto-incremented to avoid overwrites.
 
-- **results_dir** (default ``results``), **run_name** (default ``rko_lio_odometry_run``)
+- **results_dir** (default ``results``), **run_name** (default ``rko_lio_run``)
 
   Where the dump goes and the subdirectory name within.
 
 - **rviz** (`bool`, default ``false``), **rviz_config_file** (default ``config/default.rviz``)
 
   Launch RViz alongside the odometry. If you leave the rviz config at the default, the launch file patches it with your ``base_frame`` / ``odom_frame`` and enables ``publish_deskewed_scan`` / ``publish_local_map`` so the visualizer has something to show.
+
+- **use_sim_time** (`bool`, default ``false``)
+
+  Take time from the ``/clock`` topic, which is what a bag replayed with ``--clock`` publishes.
+  Offline mode drains the bag itself and does not need it.
 
 - **log_level** (default ``info``)
 

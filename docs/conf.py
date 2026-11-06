@@ -45,11 +45,10 @@ autodoc_mock_imports = [
     "tqdm",
     "rich",
     "rosbags",
-    "open3d",
+    "plyfile",
     "rerun",
     "rko_lio_pybind",
     "rko_lio.rko_lio_pybind",
-    "rko_lio.dataloaders.helipr_file_reader_pybind",
     "rko_lio.dataloaders.utils",
 ]
 pkgs_to_mock = [
@@ -60,12 +59,11 @@ pkgs_to_mock = [
     "tqdm",
     "rich",
     "rosbags",
-    "open3d",
+    "plyfile",
     "rerun",
     "rko_lio_pybind",
     ".rko_lio_pybind",
     "rko_lio.rko_lio_pybind",
-    "rko_lio.dataloaders.helipr_file_reader_pybind",
     "rko_lio.dataloaders.utils",
 ]
 

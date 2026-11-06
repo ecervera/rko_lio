@@ -24,11 +24,10 @@
 // copied and modified from kinematic icp
 #pragma once
 // tf2
+#include <tf2/buffer_core.hpp>
 #include <tf2/time.hpp>
-#include <tf2_ros/static_transform_broadcaster.h>
-#include <tf2_ros/transform_broadcaster.h>
+#include <tf2_msgs/msg/tf_message.hpp>
 // ROS
-#include <rclcpp/rclcpp.hpp>
 #include <rclcpp/serialization.hpp>
 // rosbag headers
 #include <rosbag2_cpp/reader.hpp>
@@ -42,33 +41,40 @@
 #include <vector>
 
 namespace rko_lio::ros::utils {
+template <typename T>
+std::shared_ptr<T> deserialize(const rclcpp::SerializedMessage& serialized_msg) {
+  auto msg = std::make_shared<T>();
+  rclcpp::Serialization<T>().deserialize_message(&serialized_msg, msg.get());
+  return msg;
+}
+
 class BufferableBag {
 public:
-  // Wrapper node to process the transforamtions present in the bagfile
-  struct TFBridge {
-    explicit TFBridge(rclcpp::Node::SharedPtr node);
-    void ProcessTFMessage(std::shared_ptr<rosbag2_storage::SerializedBagMessage> msg) const;
-    std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster;
-    std::unique_ptr<tf2_ros::StaticTransformBroadcaster> tf_static_broadcaster;
-    rclcpp::Serialization<tf2_msgs::msg::TFMessage> serializer;
-  };
-
+  // `topics` are returned by PopNextMessage. /tf_static is loaded into `tf_buffer` up front, ignoring
+  // `skip_from_start`, and /tf is streamed in as the bag is read unless `ingest_dynamic_tf` is false.
+  // `skip_from_start` is an offset from the bag start.
   BufferableBag(const std::string& bag_path,
-                const std::shared_ptr<TFBridge> tf_bridge,
                 const std::vector<std::string>& topics,
-                const tf2::Duration seek = tf2::durationFromSec(0.0),
-                const std::chrono::seconds buffer_size = std::chrono::seconds(1));
+                std::shared_ptr<tf2::BufferCore> tf_buffer,
+                const tf2::Duration skip_from_start = tf2::durationFromSec(0.0),
+                const std::chrono::seconds buffer_size = std::chrono::seconds(1),
+                const bool ingest_dynamic_tf = true);
 
-  void publish_tf_static(const std::string& bag_path);
   size_t message_count() const;
+  // empty if the bag does not hold `topic`
+  std::string topic_type(const std::string& topic) const;
   void BufferMessages();
   rosbag2_storage::SerializedBagMessage PopNextMessage();
   bool finished() const;
   void close() const;
 
 private:
-  std::shared_ptr<TFBridge> tf_bridge_;
+  void load_tf_static(const std::string& bag_path);
+  void apply_tf_message(const std::shared_ptr<rosbag2_storage::SerializedBagMessage>& msg) const;
+
+  std::shared_ptr<tf2::BufferCore> tf_buffer_;
   std::unique_ptr<rosbag2_cpp::Reader> bag_reader_;
+  rclcpp::Serialization<tf2_msgs::msg::TFMessage> serializer_;
   std::queue<rosbag2_storage::SerializedBagMessage> buffer_;
   std::chrono::seconds buffer_size_;
   std::vector<std::string> topics_;

@@ -22,20 +22,22 @@
 // SOFTWARE.
 
 #include "point_cloud_write.hpp"
+#include "rko_lio/core/error.hpp"
 #include <regex>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/msg/point_field.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
 namespace {
-using PointCloud2 = sensor_msgs::msg::PointCloud2;
-using PointField = sensor_msgs::msg::PointField;
-using Header = std_msgs::msg::Header;
+using sensor_msgs::msg::PointCloud2;
+using sensor_msgs::msg::PointField;
+using std_msgs::msg::Header;
 using StampType = builtin_interfaces::msg::Time;
 
 std::string FixFrameId(const std::string& frame_id) { return std::regex_replace(frame_id, std::regex("^/"), ""); }
 
-PointCloud2::UniquePtr create_point_cloud2_msg(const size_t n_points, const Header& header, bool timestamp = false) {
+PointCloud2::UniquePtr
+create_point_cloud2_msg(const size_t n_points, const Header& header, bool timestamp = false, bool intensity = false) {
   PointCloud2::UniquePtr cloud_msg = std::make_unique<PointCloud2>();
   sensor_msgs::PointCloud2Modifier modifier(*cloud_msg);
   cloud_msg->header = header;
@@ -45,7 +47,11 @@ PointCloud2::UniquePtr create_point_cloud2_msg(const size_t n_points, const Head
   offset = addPointField(*cloud_msg, "x", 1, PointField::FLOAT32, offset);
   offset = addPointField(*cloud_msg, "y", 1, PointField::FLOAT32, offset);
   offset = addPointField(*cloud_msg, "z", 1, PointField::FLOAT32, offset);
-  offset += sizeOfPointField(PointField::FLOAT32);
+  if (intensity) {
+    offset = addPointField(*cloud_msg, "intensity", 1, PointField::FLOAT32, offset);
+  } else {
+    offset += sizeOfPointField(PointField::FLOAT32);
+  }
   if (timestamp) {
     // assuming timestamp on a velodyne fashion for now (between 0.0 and 1.0)
     offset = addPointField(*cloud_msg, "time", 1, PointField::FLOAT64, offset);
@@ -60,23 +66,43 @@ PointCloud2::UniquePtr create_point_cloud2_msg(const size_t n_points, const Head
   return cloud_msg;
 }
 
-void fill_point_cloud2_xyz(const std::vector<Eigen::Vector3d>& points, PointCloud2& msg) {
+void fill_point_cloud2_xyz(const rko_lio::core::Vector3sVector& points, PointCloud2& msg) {
   sensor_msgs::PointCloud2Iterator<float> msg_x(msg, "x");
   sensor_msgs::PointCloud2Iterator<float> msg_y(msg, "y");
   sensor_msgs::PointCloud2Iterator<float> msg_z(msg, "z");
   for (size_t i = 0; i < points.size(); i++, ++msg_x, ++msg_y, ++msg_z) {
-    const Eigen::Vector3d& point = points[i];
+    const Eigen::Vector3s& point = points[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     *msg_x = static_cast<float>(point.x());
     *msg_y = static_cast<float>(point.y());
     *msg_z = static_cast<float>(point.z());
   }
 }
+
+void fill_point_cloud2_intensity(const std::vector<float>& intensities, PointCloud2& msg) {
+  sensor_msgs::PointCloud2Iterator<float> msg_i(msg, "intensity");
+  for (size_t i = 0; i < intensities.size(); i++, ++msg_i) {
+    *msg_i = intensities[i]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+  }
+}
 } // namespace
 namespace rko_lio::ros::utils {
 
-PointCloud2::UniquePtr eigen_to_point_cloud2(const std::vector<Eigen::Vector3d>& points, const Header& header) {
+PointCloud2::UniquePtr eigen_to_point_cloud2(const rko_lio::core::Vector3sVector& points, const Header& header) {
   PointCloud2::UniquePtr msg = create_point_cloud2_msg(points.size(), header);
   fill_point_cloud2_xyz(points, *msg);
+  return msg;
+}
+
+PointCloud2::UniquePtr eigen_to_point_cloud2(const rko_lio::core::Vector3sVector& points,
+                                             const std::vector<float>& intensities,
+                                             const Header& header) {
+  if (intensities.size() != points.size()) {
+    throw core::InputError("Intensities size (" + std::to_string(intensities.size()) + ") does not match points (" +
+                           std::to_string(points.size()) + ").");
+  }
+  PointCloud2::UniquePtr msg = create_point_cloud2_msg(points.size(), header, /*timestamp=*/false, /*intensity=*/true);
+  fill_point_cloud2_xyz(points, *msg);
+  fill_point_cloud2_intensity(intensities, *msg);
   return msg;
 }
 
